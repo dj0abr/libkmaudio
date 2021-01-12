@@ -111,7 +111,7 @@ int recordCallback( const void*                     inputBuffer,
     int devidx = *((int *)userData);
 	int chans = devlist[devidx].inputParameters.channelCount;
 
-	//printf("captured %d frames. Flag: %X\n", framesPerBuffer, statusFlags);
+	//printf("%ld captured %d frames. Flag: %X\n", (long)rptr,framesPerBuffer, statusFlags);
 	//measure_speed_bps(framesPerBuffer);
 
 	for (unsigned int i = 0; i < framesPerBuffer; i++)

@@ -56,8 +56,55 @@ int kmaudio_getDeviceList()
         return -1;
     }
 
-    io_buildUdpAudioList();
+    io_buildAudioDevString();
 
+    // close stream if a device does not exist any more
+    for (int i = 0; i < devanz; i++)
+    {
+        if (devlist[i].active == 0)
+        {
+            if (devlist[i].instream != NULL)
+            {
+                printf("capture device %s disconnected, stop stream\n", devlist[i].name);
+                soundio_instream_destroy(devlist[i].instream);
+                devlist[i].instream = NULL;
+                devlist[i].working = 0;
+            }
+            
+            if(devlist[i].outstream != NULL)
+            {
+                printf("playback device %s disconnected, stop stream\n", devlist[i].name);
+                soundio_outstream_destroy(devlist[i].outstream);
+                devlist[i].outstream = NULL;
+                devlist[i].working = 0;
+            }
+        }
+    }
+
+    static int csum = 0;
+    int sum = 0;
+    uint8_t* p = (uint8_t*)&(devlist[0].index);
+    for (int i = 0; i < (int)sizeof(devlist); i++)
+        sum += *p++;
+    
+    if (csum != sum)
+    {
+        csum = sum;
+
+        printf("====== Linux Devices found: ======\n");
+        for (int i = 0; i < devanz; i++)
+        {
+            printf("Index:  %d\n", devlist[i].index);
+            printf("Name: %s\n", devlist[i].name);
+            printf("ID: %s\n", devlist[i].id);
+            printf("Cap/PB: %d\n", devlist[i].in_out);
+            printf("Channels: %d\n", devlist[i].stereo_mono);
+            printf("SR 44100: %d\n", devlist[i].supports_44100);
+            printf("SR 48000: %d\n", devlist[i].supports_48000);
+            printf("is active: %s\n", devlist[i].active ? "yes" : "no");
+            printf("--------------------------------------\n");
+        }
+    }
 	return 0;
 }
 
@@ -72,54 +119,72 @@ static void get_channel_layout(const struct SoundIoChannelLayout* layout)
     }
 }
 
-int print_device(struct SoundIoDevice* device)
+int getDeviceParameters(int idx, struct SoundIoDevice* device)
 {
-    if (!device->probe_error)
+    strncpy(devlist[idx].id, device->id, sizeof(devlist[0].id) - 1);
+    devlist[idx].id[sizeof(devlist[0].id) - 1] = 0;
+    strncpy(devlist[idx].name, device->name, sizeof(devlist[0].name) - 1);
+    devlist[idx].name[sizeof(devlist[0].name) - 1] = 0;
+
+    for (int i = 0; i < device->layout_count; i++)
+        get_channel_layout(&device->layouts[i]);
+
+    int min = 999999, max = 0;
+    for (int i = 0; i < device->sample_rate_count; i++)
     {
-        // ignore if exists
-        for (int i = 0; i < devanz; i++)
-            if (!strcmp(device->id, devlist[i].id)) return 0;
+        struct SoundIoSampleRateRange* range = &device->sample_rates[i];
+        if (range->min < min)
+            min = range->min;
 
-        if (strstr(device->name, "onitor")) return 0;
-
-        strncpy(devlist[devanz].id, device->id, sizeof(devlist[0].id) - 1);
-        devlist[devanz].id[sizeof(devlist[0].id) - 1] = 0;
-        strncpy(devlist[devanz].name, device->name, sizeof(devlist[0].name) - 1);
-        devlist[devanz].name[sizeof(devlist[0].name) - 1] = 0;
-
-        for (int i = 0; i < device->layout_count; i++)
-            get_channel_layout(&device->layouts[i]);
-
-        int min = 999999, max = 0;
-        for (int i = 0; i < device->sample_rate_count; i++)
-        {
-            struct SoundIoSampleRateRange* range = &device->sample_rates[i];
-            if (range->min < min)
-                min = range->min;
-
-            if (range->max > max)
-                max = range->max;
-        }
-        if (min <= 44100) devlist[devanz].supports_44100 = 1;
-        if (max >= 48000) devlist[devanz].supports_48000 = 1;
-        if (devlist[devanz].supports_44100 == 0 && devlist[devanz].supports_48000 == 0) return 0;
-        return 1;
+        if (range->max > max)
+            max = range->max;
     }
-    return 0;
+    if (min <= 44100) devlist[idx].supports_44100 = 1;
+    if (max >= 48000) devlist[idx].supports_48000 = 1;
+    if (devlist[idx].supports_44100 == 0 && devlist[idx].supports_48000 == 0) return 0;
+    return 1;
+}
+
+int getDevlistIndex(char* name, char* id)
+{
+    for (int i = 0; i < devanz; i++)
+    {
+        // check if already exists
+        if (!strcmp(devlist[i].id, id) && !strcmp(devlist[i].name, name)) 
+            return i;
+    }
+
+    int newidx = devanz;
+    devanz++;
+    //printf("New Dev:%s Idx:%d\n", name, newidx);
+    return newidx;
 }
 
 int scan_devices()
 {
-    devanz = 0;
+    for (int i = 0; i < devanz; i++)
+        devlist[i].active = 0;
+
+    int didx;
     for (int i = 0; i < soundio_input_device_count(soundio); i++)
     {
         struct SoundIoDevice* device = soundio_get_input_device(soundio, i);
-        if (print_device(device) == 1)
+        if (device == NULL) continue;
+        if (strstr(device->name, "onitor")) continue;
+        if (device->probe_error) continue;
+
+        didx = getDevlistIndex(device->name, device->id);
+        if (getDeviceParameters(didx, device) == 1)
         {
             //printf("%d %d ====CAP:\nid:<%s>\nname:<%s>\n", i,devanz,device->id, device->name);
-            devlist[devanz].in_out = 0;
-            devlist[devanz].index = devanz;
-            devanz++;
+            devlist[didx].in_out = 0;
+            devlist[didx].index = didx;
+            devlist[didx].active = 1;
+        }
+        else
+        {
+            *devlist[didx].name = 0;
+            *devlist[didx].id = 0;
         }
         soundio_device_unref(device);
     }
@@ -127,16 +192,26 @@ int scan_devices()
     for (int i = 0; i < soundio_output_device_count(soundio); i++)
     {
         struct SoundIoDevice* device = soundio_get_output_device(soundio, i);
-        if (print_device(device) == 1)
+        if (device == NULL) continue;
+        if (strstr(device->name, "onitor")) continue;
+        if (device->probe_error) continue;
+
+        didx = getDevlistIndex(device->name, device->id);
+        if (getDeviceParameters(didx, device) == 1)
         {
             //printf("====PB :\nid:<%s>\nname:<%s>\n", device->id, device->name);
-            devlist[devanz].in_out = 1;
-            devlist[devanz].index = devanz;
-            devanz++;
+            devlist[didx].in_out = 1;
+            devlist[didx].index = didx;
+            devlist[didx].active = 1;
+        }
+        else
+        {
+            *devlist[didx].name = 0;
+            *devlist[didx].id = 0;
         }
         soundio_device_unref(device);
     }
     return 0;
 }
 
-#endif // ndef WIN32
+#endif // ifndef WIN32

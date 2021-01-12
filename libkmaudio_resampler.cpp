@@ -39,8 +39,8 @@ float fresamp[MAXDEVICES][MAXRLEN];
 
 unsigned int h_len = 13;		// filter semi-length (filter delay)
 float r = 0.9f;					// resampling rate (output/input)
-float bw = 0.5f;				// resampling filter bandwidth
-float slsl = -60.0f;			// resampling filter sidelobe suppression level
+float bw = 0.45f;				// resampling filter bandwidth
+float slsl = 60.0f;			// resampling filter sidelobe suppression level
 unsigned int npfb = 32;			// number of filters in bank (timing resolution)
 
 void resampler_create(int devidx)
@@ -52,6 +52,8 @@ void resampler_create(int devidx)
 		for (int i = 0; i < MAXDEVICES; i++)
 			q[i] = NULL;
 	}
+
+	printf("create resampler %d real %d req %d\n", devidx, devlist[devidx].real_samprate, devlist[devidx].requested_samprate);
 
 	if (q[devidx] != NULL) resamp_crcf_destroy(q[devidx]);
 
@@ -71,6 +73,8 @@ void resampler_create(int devidx)
 	}
 
 	r = (float)dst_rate / (float)src_rate;
+
+	printf("%f  %f  %f\n", r, (float)dst_rate, (float)src_rate);
 
 	q[devidx] = resamp_crcf_create(r, h_len, bw, slsl, npfb);
 }

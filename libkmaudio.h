@@ -1,3 +1,30 @@
+/*
+* Audio Library for Linux and Windows
+* ===================================
+* Author: DJ0ABR
+*
+* Author: Kurt Moraw, Ham radio: DJ0ABR, github: dj0abr
+* License: GPL-3
+*
+* compilation:
+* Windows ... Visual Studio
+* Linux ... make
+*
+*   This program is free software; you can redistribute it and/or modify
+*   it under the terms of the GNU General Public License as published by
+*   the Free Software Foundation; either version 2 of the License, or
+*   (at your option) any later version.
+*
+*   This program is distributed in the hope that it will be useful,
+*   but WITHOUT ANY WARRANTY; without even the implied warranty of
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*   GNU General Public License for more details.
+*
+*   You should have received a copy of the GNU General Public License
+*   along with this program; if not, write to the Free Software
+*   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+*/
+
 #pragma once
 
 #ifdef WIN32
@@ -53,36 +80,27 @@
 
 #include "liquid.h"
 
-
-
-
-#define MAXDEVICES	100
-#define MAXDEVNAMELENGTH	80
-
-typedef struct _DEVLIST_ {
-	int index = 0;				// index to this list
-	int devnum = -1;			// port audio device number
-	char name[MAXDEVNAMELENGTH] = { 0 };// real name
-	int in_out = 0;				// 0=capture device, 1=playback device, 2=both
-	int supports_44100 = 0;		// 1 if supported
-	int supports_48000 = 0;		// 1 if supported
-	int requested_samprate = 0; // sample rate requested by caller
-	int real_samprate = 0;		// real sample rate of the device
-	int working = 0;			// 0=not running, 1=initialized and working
-#ifdef WIN32 // Windows using portaudio
-	PaStreamParameters inputParameters;
-	PaStreamParameters outputParameters;
-	PaStream	*capStream = NULL;
-	PaStream	*pbStream = NULL;
-#else // Linux using libsoundio
-	struct SoundIoDevice* io_pb_device = NULL;
-	struct SoundIoDevice* io_cap_device = NULL;
-	struct SoundIoInStream* instream = NULL;
-	struct SoundIoOutStream* outstream = NULL;
-	int    stereo_mono = 2;    // 1=mono, 2=stereo
-	char id[1000] = { 0 };
-#endif
-} DEVLIST;
+/*
+* Sample usage:
+* init sound system
+* 1. kmaudio_init();
+* 2. kmaudio_getDeviceList();
+* 
+* start a capture and a playback stream 
+* 3. kmaudio_startCapture() using a device name returned by io_getAudioDevicelist()
+* 4. kmaudio_startPlayback() using a device name returned by io_getAudioDevicelist()
+* 
+* now everything runs in the background, no more need for the user program
+* to handle sound specific data
+* now we can read/write sound samples as needed by our application
+* as an example: get sound from microphone and send to speaker
+* process in a loop:
+* 5. kmaudio_readsamples()
+* 6. kmaudio_playsamples()
+* 
+* for a working example see main(), you will need to
+* replace the device names with the names in your computer
+*/
 
 /*
 * initialize the audio library, create required processes
@@ -93,12 +111,14 @@ int kmaudio_init();
 
 /*
 * closes and frees all resources
-* call when application stops
+* call only when the application exits
 */
 void kmaudio_close();
 
 /*
 * read a list of all available audio devices into devlist
+* the list can then be read by calling io_getAudioDevicelist()
+* call any time to find new plugged in/out devices
 * returns: 0=OK, -1 if error
 */
 int kmaudio_getDeviceList();
@@ -140,15 +160,50 @@ int kmaudio_readsamples(int id, float* psamp, int len, int wait);
 * *len...length of the returned string
 * returns: pointer to device string
 * Format of the device string:
+* first byte = 3 ... ID of this string, followed by pure text:
+* Active status of the following device "0" or "1"
 * Name of playback devices, followed by ~
 * separator ^
+* Active status of the following device "0" or "1"
 * Name of capture devices, followed by ~
 * these names are used for calls to kmaudio_startCapture and kmaudio_startPlayback
 * to select the device
 */
 uint8_t* io_getAudioDevicelist(int* len);
 
-// functions for internal use
+
+
+// -------- functions for internal use only --------
+
+#define MAXDEVICES	200
+#define MAXDEVNAMELENGTH	150
+
+typedef struct _DEVLIST_ {
+	int index = 0;				// index to this list
+	int active = 0;				// 1=device valid, 0=possibly disconencted
+	char name[MAXDEVNAMELENGTH] = { 0 };// real name
+	int in_out = 0;				// 0=capture device, 1=playback device, 2=both
+	int supports_44100 = 0;		// 1 if supported
+	int supports_48000 = 0;		// 1 if supported
+	int requested_samprate = 0; // sample rate requested by caller
+	int real_samprate = 0;		// real sample rate of the device
+	int working = 0;			// 0=not running, 1=initialized and working
+#ifdef WIN32 // Windows using portaudio
+	int devnum = -1;			// port audio device number
+	PaStreamParameters inputParameters;
+	PaStreamParameters outputParameters;
+	PaStream* capStream = NULL;
+	PaStream* pbStream = NULL;
+#else // Linux using libsoundio
+	struct SoundIoDevice* io_pb_device = NULL;
+	struct SoundIoDevice* io_cap_device = NULL;
+	struct SoundIoInStream* instream = NULL;
+	struct SoundIoOutStream* outstream = NULL;
+	int    stereo_mono = 2;    // 1=mono, 2=stereo
+	char id[1000] = { 0 };
+#endif
+} DEVLIST;
+
 int searchDevice(char* devname, int io);
 void measure_speed_bps(int len);
 void sleep_ms(int ms);
@@ -160,9 +215,10 @@ int io_read_fifo(int pipenum, float* data);
 int getRealSamprate(int idx);
 int io_fifo_elems_avail(int pipenum);
 void sleep_ms(int ms);
-void io_buildUdpAudioList();
+void io_buildAudioDevString();
 void resampler_create(int devidx);
 float* resample(int id, float* psamp, int len, int* pnewlen);
+uint64_t getms();
 
 extern DEVLIST devlist[MAXDEVICES];
 extern int devanz;

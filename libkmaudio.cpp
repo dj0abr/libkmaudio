@@ -35,6 +35,7 @@
 
 #include "libkmaudio.h"
 
+int kmaudio_getDeviceList_test();
 
 /*
 * main()
@@ -54,9 +55,10 @@ int main()
 	kmaudio_init();
 	
     // read list of devices
-    // must be called only once after program start
-    // if called during runtime and the user has connected/disconnected
-    // devices the device list changes which may crash the system
+    // call as often as needed
+    // if a user pluggs-in an USB device on the fly then the running stream may
+    // be redirected by the OS. In this case closing/opening the stream
+    // may be required.
 	kmaudio_getDeviceList();
     
     // start capture and/or playback streams
@@ -65,37 +67,59 @@ int main()
     // coresponding fifo
 
 	//int capidx = kmaudio_startCapture((char *)"Line 2 (Virtual Audio Cable)", 44100);
-    //int capidx = kmaudio_startCapture((char*)"Mikrofon (USB Advanced Audio Device)", 48000);
+    //int ucapidx = kmaudio_startCapture((char*)"Mikrofon (USB Advanced Audio Device)", 48000);
     //int capidx = kmaudio_startCapture((char*)"USB Audio CODEC: - (hw:2,0)", 48000);
-    //int capidx = kmaudio_startCapture((char*)"Mikrofon (1080P Webcam)", 44100);
-    //int pbidx = kmaudio_startPlayback((char*)"Lautsprecher (USB Advanced Audio Device)", 48000);
+    //int capidx = kmaudio_startCapture((char*)"Mikrofon (1080P Webcam)", 48000);
+    //int upbidx = kmaudio_startPlayback((char*)"Lautsprecher (USB Advanced Audio Device)", 48000);
+    //int pbidx = kmaudio_startPlayback((char*)"Lautsprecher (2- High Definition Audio Device)", 48000);
     //int pbidx = kmaudio_startPlayback((char*)"USB Audio CODEC: - (hw:2,0)", 48000);
 
     //int capidx = kmaudio_startCapture((char*)"PCM2902 Audio Codec Analog Stereo", 48000);
     //int pbidx = kmaudio_startPlayback((char*)"PCM2902 Audio Codec Analog Stereo", 48000);
-    int capidx = kmaudio_startCapture((char*)"USB Advanced Audio Device Analog Stereo", 48000);
-    int pbidx = kmaudio_startPlayback((char*)"USB Advanced Audio Device Analog Stereo", 48000);
+    int ucapidx = kmaudio_startCapture((char*)"USB Advanced Audio Device Analog Stereo", 48000);
+    int upbidx = kmaudio_startPlayback((char*)"USB Advanced Audio Device Analog Stereo", 48000);
 
-    float f[1100]; // 1.1 x need rate to have reserve for resampler
-    while (1)
+    if (ucapidx != -1 || upbidx != -1)
     {
-        // make a loop: record from Mic and play to Speaker
 
-        // read samples from the capture fifo
-        int anz = kmaudio_readsamples(capidx, f, 1000, 0);
-        if (anz > 0)
+        float f[1100]; // 1.1 x need rate to have reserve for resampler
+        while (1)
         {
-            // if samples are available, send them to playback fifo
-            //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
-            kmaudio_playsamples(pbidx, f, anz);
-        }
-        else
-        {
-            // if no samples are available make a short break
-            // this is important because it prevents excessive CPU usage
-            sleep_ms(10);
+            // make a loop: record from Mic and play to Speaker
+
+            int done = 0;
+            // read samples from the capture fifo
+            /*int anz = kmaudio_readsamples(capidx, f, 1000, 0);
+            if (anz > 0)
+            {
+                // if samples are available, send them to playback fifo
+                //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
+                kmaudio_playsamples(pbidx, f, anz);
+                done = 1;
+            }*/
+            int uanz = kmaudio_readsamples(ucapidx, f, 1000, 0);
+            if (uanz > 0)
+            {
+                // if samples are available, send them to playback fifo
+                //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
+                kmaudio_playsamples(upbidx, f, uanz);
+                done = 1;
+            }
+            if (done == 0)
+            {
+                // if no samples are available make a short break
+                // this is important to prevent excessive CPU usage
+                sleep_ms(10);
+
+                //kmaudio_getDeviceList();
+                /*int len;
+                uint8_t *devstr = io_getAudioDevicelist(&len);
+                printf("Device String: <%s>\n", (char*)(devstr + 1));*/
+            }
         }
     }
+    else
+        printf("device not available. Ending program\n");
 
     // free resources. This will never happen in this example
     // but should be done in the final program

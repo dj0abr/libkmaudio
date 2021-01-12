@@ -22,7 +22,7 @@
 *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 *   GNU General Public License for more details.
 *
-*   You should have received a copy of the GNU General Public License
+*   You should have received a copy of the GNU General Public License 
 *   along with this program; if not, write to the Free Software
 *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 *
@@ -60,6 +60,7 @@ void read_callback(struct SoundIoInStream* instream, int frame_count_min, int fr
     if (instream == NULL || soundio == NULL) return;
     //printf("cap: %d  %d\n", frame_count_min, frame_count_max);
     //int chans = instream->layout.channel_count;
+    printf("cap:%d\n", instream->sample_rate);
     int idx = *((int *)(instream->userdata));
 
     struct SoundIoChannelArea* areas;

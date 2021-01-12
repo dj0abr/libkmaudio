@@ -35,54 +35,39 @@
 
 #include "libkmaudio.h"
 
-void io_buildUdpAudioList();
+void io_buildAudioDevString();
 
-DEVLIST devlist[MAXDEVICES];
+// number of detected devices, updated after a call to kmaudio_getDeviceList()
 int devanz = 0;
+
+// devlist contains all information for all detected devices
+// the list is filled by a call to kmaudio_getDeviceList()
+DEVLIST devlist[MAXDEVICES];
 
 #ifdef WIN32
 
-static double standardSampleRates[] = {
+/*static double standardSampleRates[] = {
 8000.0, 9600.0, 11025.0, 12000.0, 16000.0, 
 22050.0, 24000.0, 32000.0, 44100.0, 48000.0, 
-88200.0, 96000.0, 192000.0, -1 };
+88200.0, 96000.0, 192000.0, -1 };*/
 
-void PrintSupportedStandardSampleRates(
-    const PaStreamParameters* inputParameters,
-    const PaStreamParameters* outputParameters)
+static double standardSampleRates[] = {44100.0, 48000.0, -1};
+
+int getDevlistIndex(const char* name, int ichans, int ochans)
 {
-    static double standardSampleRates[] = {
-        8000.0, 9600.0, 11025.0, 12000.0, 16000.0, 22050.0, 24000.0, 32000.0,
-        44100.0, 48000.0, 88200.0, 96000.0, 192000.0, -1 /* negative terminated  list */
-    };
-    int     i, printCount;
-    PaError err;
-
-    printCount = 0;
-    for (i = 0; standardSampleRates[i] > 0; i++)
+    for (int i = 0; i < devanz; i++)
     {
-        err = Pa_IsFormatSupported(inputParameters, outputParameters, standardSampleRates[i]);
-        if (err == paFormatIsSupported)
-        {
-            if (printCount == 0)
-            {
-                printf("\npc0: %8.2f\n", standardSampleRates[i]);
-                printCount = 1;
-            }
-            else if (printCount == 4)
-            {
-                printf("\npc4: %8.2f\n", standardSampleRates[i]);
-                printCount = 1;
-            }
-            else
-            {
-                printf("\npce: %8.2f\n", standardSampleRates[i]);
-                ++printCount;
-            }
-        }
+        // check if already exists
+        if (!strcmp(devlist[i].name, name) &&
+            devlist[i].inputParameters.channelCount == ichans &&
+            devlist[i].outputParameters.channelCount == ochans)
+            return i;
     }
-    printf("\n");
-    
+
+    int newidx = devanz;
+    devanz++;
+    //printf("New Dev:%s Idx:%d\n", name, newidx);
+    return newidx;
 }
 
 int kmaudio_getDeviceList()
@@ -94,8 +79,12 @@ int kmaudio_getDeviceList()
         return -1;
     }
 
-    printf("%d Devices found\n", numDevices);
+    //printf("%d Devices found\n", numDevices);
 
+    for (int i = 0; i < devanz; i++)
+        devlist[i].active = 0;
+
+    int didx;
     for (int i = 0; i < numDevices; i++)
     {
         const PaDeviceInfo* deviceInfo = Pa_GetDeviceInfo(i);
@@ -104,62 +93,102 @@ int kmaudio_getDeviceList()
         // Windows: use WASAPI devices only
         if (strstr(ai->name, "WASAPI") != NULL)
         {
-            
-            devlist[devanz].devnum = i;
-            snprintf(devlist[devanz].name, MAXDEVNAMELENGTH - 1, "%s", deviceInfo->name);
-            printf("------%s-------\n", deviceInfo->name);
+            didx = getDevlistIndex(deviceInfo->name, deviceInfo->maxInputChannels, deviceInfo->maxOutputChannels);
 
-            devlist[devanz].inputParameters.device = i;
-            devlist[devanz].inputParameters.channelCount = deviceInfo->maxInputChannels;
-            devlist[devanz].inputParameters.sampleFormat = paFloat32;
-            devlist[devanz].inputParameters.suggestedLatency = 0;
-            devlist[devanz].inputParameters.hostApiSpecificStreamInfo = NULL;
+            devlist[didx].devnum = i;
+            snprintf(devlist[didx].name, MAXDEVNAMELENGTH - 1, "%s", deviceInfo->name);
+            //printf("------%s-------\n", deviceInfo->name);
 
-            devlist[devanz].outputParameters.device = i;
-            devlist[devanz].outputParameters.channelCount = deviceInfo->maxOutputChannels;
-            devlist[devanz].outputParameters.sampleFormat = paFloat32;
-            devlist[devanz].outputParameters.suggestedLatency = 0;
-            devlist[devanz].outputParameters.hostApiSpecificStreamInfo = NULL;
+            devlist[didx].inputParameters.device = i;
+            devlist[didx].inputParameters.channelCount = deviceInfo->maxInputChannels;
+            devlist[didx].inputParameters.sampleFormat = paFloat32;
+            devlist[didx].inputParameters.suggestedLatency = 0;
+            devlist[didx].inputParameters.hostApiSpecificStreamInfo = NULL;
 
-            if (devlist[devanz].inputParameters.channelCount > 0 && devlist[devanz].outputParameters.channelCount > 0)
-                devlist[devanz].in_out = 2;
-            else if (devlist[devanz].inputParameters.channelCount > 0)
-                devlist[devanz].in_out = 0;
-            else if (devlist[devanz].outputParameters.channelCount > 0)
-                devlist[devanz].in_out = 1;
+            devlist[didx].outputParameters.device = i;
+            devlist[didx].outputParameters.channelCount = deviceInfo->maxOutputChannels;
+            devlist[didx].outputParameters.sampleFormat = paFloat32;
+            devlist[didx].outputParameters.suggestedLatency = 0;
+            devlist[didx].outputParameters.hostApiSpecificStreamInfo = NULL;
+
+            if (devlist[didx].inputParameters.channelCount > 0 && devlist[devanz].outputParameters.channelCount > 0)
+                devlist[didx].in_out = 2;
+            else if (devlist[didx].inputParameters.channelCount > 0)
+                devlist[didx].in_out = 0;
+            else if (devlist[didx].outputParameters.channelCount > 0)
+                devlist[didx].in_out = 1;
+
+            devlist[didx].index = didx;
+            devlist[didx].active = 1;
 
             for (int j = 0; standardSampleRates[j] > 0; j++)
             {
                 PaError err = 0;
-                if (devlist[devanz].inputParameters.channelCount > 0 && devlist[devanz].outputParameters.channelCount > 0)
-                    err = Pa_IsFormatSupported(&devlist[devanz].inputParameters, &devlist[devanz].outputParameters, standardSampleRates[j]);
-                if (devlist[devanz].inputParameters.channelCount > 0)
-                    err = Pa_IsFormatSupported(&devlist[devanz].inputParameters, NULL, standardSampleRates[j]);
-                if (devlist[devanz].outputParameters.channelCount > 0)
-                    err = Pa_IsFormatSupported(NULL, &devlist[devanz].outputParameters, standardSampleRates[j]);
+                //if (devlist[didx].inputParameters.channelCount > 0 && devlist[didx].outputParameters.channelCount > 0)
+                  //  err = Pa_IsFormatSupported(&devlist[didx].inputParameters, &devlist[didx].outputParameters, standardSampleRates[j]);
+                if (devlist[didx].inputParameters.channelCount > 0)
+                    err = Pa_IsFormatSupported(&devlist[didx].inputParameters, NULL, standardSampleRates[j]);
+                if (devlist[didx].outputParameters.channelCount > 0)
+                    err = Pa_IsFormatSupported(NULL, &devlist[didx].outputParameters, standardSampleRates[j]);
 
-                if (err == paFormatIsSupported)
+                // portaudio cannot detect if a device was removed, instead it delivers errors
+                if (err == paInvalidDevice)
+                    devlist[didx].active = 0;
+                else if (err == paFormatIsSupported)
                 {
-                    if (j == 8) devlist[devanz].supports_44100 = 1;
-                    if (j == 9) devlist[devanz].supports_48000 = 1;
+                    if (j == 0) devlist[didx].supports_44100 = 1;
+                    if (j == 1) devlist[didx].supports_48000 = 1;
                 }
             }
-            devlist[devanz].index = devanz;
-            devanz++;
         }
     }
 
-    io_buildUdpAudioList();
+    io_buildAudioDevString();
 
-    printf("Devices found:\n");
+    // close stream if a device does not exist any more
     for (int i = 0; i < devanz; i++)
     {
-        printf("Portaudio ID: %d\n", devlist[i].devnum);
-        printf("Name: %s\n", devlist[i].name);
-        printf("Cap/PB: %d\n", devlist[i].in_out);
-        printf("Channels: i:%d o:%d\n", devlist[i].inputParameters.channelCount, devlist[i].outputParameters.channelCount);
-        printf("SR 44100: %d\n", devlist[i].supports_44100);
-        printf("SR 48000: %d\n", devlist[i].supports_48000);
+        if (devlist[i].active == 0)
+        {
+            if (devlist[i].capStream != NULL)
+            {
+                printf("capture device %s disconnected, stop stream\n", devlist[i].name);
+                Pa_CloseStream(devlist[i].capStream);
+                devlist[i].capStream = NULL;
+                devlist[i].working = 0;
+            }
+
+            if (devlist[i].pbStream != NULL)
+            {
+                printf("playback device %s disconnected, stop stream\n", devlist[i].name);
+                Pa_CloseStream(devlist[i].pbStream);
+                devlist[i].pbStream = NULL;
+                devlist[i].working = 0;
+            }
+        }
+    }
+
+    static int csum = 0;
+    int sum = 0;
+    uint8_t* p = (uint8_t*)&(devlist[0].index);
+    for (int i = 0; i < (int)sizeof(devlist); i++)
+        sum += *p++;
+
+    if (csum != sum)
+    {
+        csum = sum;
+
+        printf("Windows Devices found:\n");
+        for (int i = 0; i < devanz; i++)
+        {
+            printf("Portaudio ID: %d\n", devlist[i].index);
+            printf("Name: %s\n", devlist[i].name);
+            printf("Cap/PB: %d\n", devlist[i].in_out);
+            printf("Channels: i:%d o:%d\n", devlist[i].inputParameters.channelCount, devlist[i].outputParameters.channelCount);
+            printf("SR 44100: %d\n", devlist[i].supports_44100);
+            printf("SR 48000: %d\n", devlist[i].supports_48000);
+            printf("is active: %s\n", devlist[i].active ? "yes" : "no");
+        }
     }
 
     return 0;
@@ -167,13 +196,13 @@ int kmaudio_getDeviceList()
 
 #endif //WIN32
 
+
 // find a device in devlist
 // returns: list index or -1 if error
 int searchDevice(char* devname, int io)
 {
     for (int i = 0; i < devanz; i++)
     {
-        printf("%d:<%s>\n", devlist[i].in_out, devlist[i].name);
         if (strcmp(devname, devlist[i].name) == 0 && (devlist[i].in_out == io || devlist[i].in_out == 2))
             return i;
     }
@@ -209,7 +238,7 @@ int getRealSamprate(int idx)
 #define MAXDEVSTRLEN (MAXDEVICES * (MAXDEVNAMELENGTH + 2) + 10)
 uint8_t io_devstring[MAXDEVSTRLEN];
 
-void io_buildUdpAudioList()
+void io_buildAudioDevString()
 {
     memset(io_devstring, 0, sizeof(io_devstring));
     io_devstring[0] = ' ';     // placeholder for ID for this UDP message
@@ -217,6 +246,7 @@ void io_buildUdpAudioList()
     // playback devices
     for (int i = 0; i < devanz; i++)
     {
+        if (devlist[i].active == 0) continue;
         if (strlen((char *)io_devstring) > MAXDEVSTRLEN)
         {
             printf("io_devstring too small:%d / %d. Serious error, abort program\n", MAXDEVSTRLEN, (int)strlen((char*)io_devstring));
@@ -235,6 +265,7 @@ void io_buildUdpAudioList()
     // capture devices
     for (int i = 0; i < devanz; i++)
     {
+        if (devlist[i].active == 0) continue;
         if (strlen((char*)io_devstring) > MAXDEVSTRLEN)
         {
             printf("io_devstring too small:%d / %d. Serious error, abort program\n", MAXDEVSTRLEN, (int)strlen((char*)io_devstring));
@@ -250,7 +281,7 @@ void io_buildUdpAudioList()
 
     //printf("<%s>\n", (char *)io_devstring);
 
-    io_devstring[0] = 3;   // ID for this UDP message
+    io_devstring[0] = 3;   // ID for this message
 }
 
 uint8_t* io_getAudioDevicelist(int* len)

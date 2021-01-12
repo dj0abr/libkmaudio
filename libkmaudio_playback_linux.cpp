@@ -51,6 +51,7 @@ static void write_callback(struct SoundIoOutStream* outstream, int frame_count_m
 {
     if (outstream == NULL || soundio == NULL) return;
     //printf("pb: %d  %d\n", frame_count_min, frame_count_max);
+    printf("pb :%d\n", outstream->sample_rate);
     int idx = *((int*)(outstream->userdata));
 
 #ifdef SINEWAVETEST
@@ -76,7 +77,7 @@ static void write_callback(struct SoundIoOutStream* outstream, int frame_count_m
         if (!frame_count)
             break;
 
-        //printf("ck: %d\n", frame_count);
+        //printf("ck: %d read from fifo:%d\n", frame_count,idx);
 
         float f[10000];
         memset(f, 0, sizeof(float) * frame_count);
