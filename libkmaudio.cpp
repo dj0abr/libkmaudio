@@ -50,8 +50,7 @@ int main()
 {
     // initialize sound system
     // must be called once after program start
-    // may be called during program run, this will reset the sound system
-    // and should usually not be required
+    // if called during program run, this will reset the sound system, so better don't do it
 	kmaudio_init();
 	
     // read list of devices
