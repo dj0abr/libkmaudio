@@ -51,7 +51,7 @@ static void write_callback(struct SoundIoOutStream* outstream, int frame_count_m
 {
     if (outstream == NULL || soundio == NULL) return;
     //printf("pb: %d  %d\n", frame_count_min, frame_count_max);
-    printf("pb :%d\n", outstream->sample_rate);
+    //printf("pb :%d\n", outstream->sample_rate);
     int idx = *((int*)(outstream->userdata));
 
 #ifdef SINEWAVETEST

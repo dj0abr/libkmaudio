@@ -60,7 +60,7 @@ void read_callback(struct SoundIoInStream* instream, int frame_count_min, int fr
     if (instream == NULL || soundio == NULL) return;
     //printf("cap: %d  %d\n", frame_count_min, frame_count_max);
     //int chans = instream->layout.channel_count;
-    printf("cap:%d\n", instream->sample_rate);
+    //printf("cap:%d\n", instream->sample_rate);
     int idx = *((int *)(instream->userdata));
 
     struct SoundIoChannelArea* areas;
