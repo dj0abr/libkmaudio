@@ -1,4 +1,5 @@
-# libkmaudio: very simple to use audio library for Linux and Windows
+# libkmaudio
+## very simple to use audio library for Linux and Windows
 
 I was looking for an audio soultion working on both, Linux and Windows.
 It was impossible to find a reliable open source solution.
