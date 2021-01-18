@@ -42,8 +42,25 @@ int playCallback(const void* inputBuffer,
 	PaStreamCallbackFlags           statusFlags,
 	void* userData);
 
+void close_playback_stream(int idx)
+{
+	if (devlist[idx].pbStream != NULL)
+	{
+		Pa_CloseStream(devlist[idx].pbStream);
+		devlist[idx].pbStream = NULL;
+	}
+}
+
 int kmaudio_startPlayback(char* devname, int samprate)
 {
+	printf("Start request for PB stream:%s\n", devname);
+
+	if (devname == NULL || strlen(devname) < 3)  // no devices defined yet
+	{
+		printf("no PB devices specified\n");
+		return -1;
+	}
+
 	int idx = searchDevice(devname, 1);
 	if (idx == -1)
 	{
@@ -53,11 +70,11 @@ int kmaudio_startPlayback(char* devname, int samprate)
 
 	devlist[idx].working = 0;
 
-	if (devlist[idx].pbStream != NULL)
-	{
-		Pa_CloseStream(devlist[idx].pbStream);
-		devlist[idx].pbStream = NULL;
-	}
+	close_playback_stream(idx);
+
+	printf("Starting PB stream:%s [%d]\n", devname, idx);
+
+	io_fifo_clear(idx);
 
 	devlist[idx].requested_samprate = samprate;
 	if (getRealSamprate(idx) == -1)
@@ -69,8 +86,18 @@ int kmaudio_startPlayback(char* devname, int samprate)
 	if (devlist[idx].requested_samprate != devlist[idx].real_samprate)
 		resampler_create(idx);
 
-	PaError e = Pa_IsFormatSupported(&devlist[idx].outputParameters, NULL, (double)samprate);
-	printf("Playback : err:%d device:%d PAdev:%d samprate: %f chans:%d\n", e, idx, devlist[idx].devnum, (double)samprate, devlist[idx].outputParameters.channelCount);
+	struct PaWasapiStreamInfo wasapiInfo;
+	memset(&wasapiInfo, 0, sizeof(PaWasapiStreamInfo));
+	wasapiInfo.size = sizeof(PaWasapiStreamInfo);
+	wasapiInfo.hostApiType = paWASAPI;
+	wasapiInfo.version = 1;
+	wasapiInfo.flags = (paWinWasapiExclusive | paWinWasapiThreadPriority);
+	wasapiInfo.threadPriority = eThreadPriorityProAudio;
+
+	devlist[idx].outputParameters.hostApiSpecificStreamInfo = (&wasapiInfo);
+
+	PaError e = Pa_IsFormatSupported(&devlist[idx].outputParameters, NULL, (double)devlist[idx].real_samprate);
+	printf("Playback : err:%d device:%d PAdev:%d samprate: %f chans:%d\n", e, idx, devlist[idx].devnum, (double)devlist[idx].real_samprate, devlist[idx].outputParameters.channelCount);
 
 	devlist[idx].index = idx;
 
@@ -78,7 +105,7 @@ int kmaudio_startPlayback(char* devname, int samprate)
 		&devlist[idx].pbStream,
 		NULL,
 		&devlist[idx].outputParameters,
-		(double)samprate,
+		(double)devlist[idx].real_samprate,
 		FRAMES_PER_BUFFER,
 		paClipOff,
 		playCallback,
@@ -109,19 +136,20 @@ int playCallback(	const void* inputBuffer,
 					PaStreamCallbackFlags           statusFlags,
 					void* userData)
 {
-	float* rptr = (float*)outputBuffer;
+	int16_t* rptr = (int16_t*)outputBuffer;
 	int devidx = *((int*)userData);
 	int chans = devlist[devidx].outputParameters.channelCount;
 
 	//measure_speed_bps(framesPerBuffer);
 
-	float f[FRAMES_PER_BUFFER];
-	memset(f, 0, sizeof(float) * FRAMES_PER_BUFFER);
-	unsigned int num = io_read_fifo_num(devidx, f, framesPerBuffer);
+	int16_t f[FRAMES_PER_BUFFER];
+	memset(f, 0, sizeof(int16_t) * FRAMES_PER_BUFFER);
+	unsigned int num = io_read_fifo_num_short(devidx, f, framesPerBuffer);
 	if (num < framesPerBuffer)
 	{
 		//printf("got %d from fifo, requested %d\n", num, framesPerBuffer);
 	}
+	int av = io_fifo_elems_avail(devidx);
 
 	for (unsigned int i = 0; i < framesPerBuffer; i++)
 	{

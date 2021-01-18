@@ -81,7 +81,7 @@ void resampler_create(int devidx)
 
 
 
-float *resample(int id, float *psamp, int len, int *pnewlen)
+float* resample(int id, float*psamp, int len, int *pnewlen)
 {
 	int didx = 0;
 

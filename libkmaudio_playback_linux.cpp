@@ -78,6 +78,11 @@ static void write_callback(struct SoundIoOutStream* outstream, int frame_count_m
             break;
 
         //printf("ck: %d read from fifo:%d\n", frame_count,idx);
+        if (frame_count >= 10000)
+        {
+            printf("frame count >= 1000: %d\n", frame_count); 
+            exit(0);
+        }
 
         float f[10000];
         memset(f, 0, sizeof(float) * frame_count);
@@ -131,17 +136,34 @@ void underflow_callback(struct SoundIoOutStream* outstream)
     printf("underflow %d\n", count++);
 }
 
+void close_playback_stream(int idx)
+{
+    if (devlist[idx].outstream != NULL)
+    {
+        soundio_outstream_destroy(devlist[idx].outstream);
+        devlist[idx].outstream = NULL;
+    }
+}
+
 int kmaudio_startPlayback(char* devname, int samprate)
 {
+    printf("Start request for PB stream:%s\n", devname);
+
     if (devname == NULL || strlen(devname) < 3)  // no devices defined yet
     {
-        printf("no capture devices specified\n");
+        printf("no PB devices specified\n");
         return -1;
     }
 
     int idx = 0; // index into devlist
     char* pbdevid = getDevID(devname, 1, &idx);
     if (pbdevid == NULL) return -1;
+
+    close_playback_stream(idx);
+
+    printf("Starting PB stream:%s [%d]\n", devname, idx);
+
+    io_fifo_clear(idx);
 
     devlist[idx].working = 0;
 

@@ -142,8 +142,9 @@ int kmaudio_startPlayback(char* devname, int samprate);
 * id ... device id returned by kmaudio_startPlayback
 * psamp ... float array of length len with the audio data (mono)
 * len ... number of float values in psamp
+* volume ... 0.0f..2.0f will be multiplied with the output sample
 */
-int kmaudio_playsamples(int id, float* psamp, int len);
+int kmaudio_playsamples(int id, float* psamp, int len, float volume);
 
 /*
 * reads len samples from device id into psamp
@@ -151,9 +152,10 @@ int kmaudio_playsamples(int id, float* psamp, int len);
 * id ... device id returned by kmaudio_startCapture
 * psamp ... float array of length len getting the audio data (mono)
 * len ... number of float values to write into psamp
+* volume ... 0.0f..2.0f will be multiplied with the input sample
 * wait ... 1=wait for data, 0=return if not enough data available (in this case psamp will return 0,0,0...)
 */
-int kmaudio_readsamples(int id, float* psamp, int len, int wait);
+int kmaudio_readsamples(int id, float* psamp, int len, float volume, int wait);
 
 /*
 * reads the names of detected sound devices
@@ -171,6 +173,38 @@ int kmaudio_readsamples(int id, float* psamp, int len, int wait);
 */
 uint8_t* io_getAudioDevicelist(int* len);
 
+/*
+* returns the max level (within 1 second) of this stream in % (0..100)
+* if the level >= 100 the signal will get clipped and distorted
+*/
+uint8_t kmaudio_maxlevel(int id);
+
+/*
+* closes a stream which was started by 
+* kmaudio_startCapture or kmaudio_startPlayback
+* id ... stream ID which was returned by kmaudio_startCapture or kmaudio_startPlayback
+*/
+void close_stream(int id);
+
+/*
+* handle the FIFO which is used to buffer audio data
+* pipenum ... stream ID which was returned by kmaudio_startCapture or kmaudio_startPlayback
+* IMPORTANT: this information MUST be used to synchonize the data flow into
+* the fifo. The speed is always defined by the audio sample rate
+* by checking the fifo an application knows when it has to put more audio samples
+* into the fifo
+*/
+// returns number of remaining elements (audio 16 bit short values) 
+int io_fifo_freespace(int pipenum);
+
+// returns number of used elements (audio 16 bit short values) 
+int io_fifo_usedspace(int pipenum);
+
+// like before, but returns a number between 0 and 100 %
+int io_fifo_usedpercent(int pipenum);
+
+// clear the fifo
+void io_fifo_clear(int pipenum);
 
 
 // -------- functions for internal use only --------
@@ -208,6 +242,7 @@ int searchDevice(char* devname, int io);
 void measure_speed_bps(int len);
 void sleep_ms(int ms);
 void io_write_fifo(int pipenum, float sample);
+void io_write_fifo_short(int pipenum, int16_t sample);
 void io_fifo_clear(int pipenum);
 void init_pipes();
 int io_read_fifo_num(int pipenum, float* data, int num);
@@ -219,6 +254,11 @@ void io_buildAudioDevString();
 void resampler_create(int devidx);
 float* resample(int id, float* psamp, int len, int* pnewlen);
 uint64_t getms();
+void init_maxarray();
+void kmaudio_detectDropouts(int id);
+int io_read_fifo_num_short(int pipenum, int16_t* data, int num);
+void close_capture_stream(int idx);
+void close_playback_stream(int idx);
 
 extern DEVLIST devlist[MAXDEVICES];
 extern int devanz;

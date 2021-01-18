@@ -37,11 +37,14 @@
 
 int kmaudio_getDeviceList_test();
 
+int keeprunning = 1;
+
 /*
 * main()
 * for testing purposes only
 * for library generation comment out: LIBTEST
 */
+
 
 #define LIBTEST
 
@@ -65,60 +68,25 @@ int main()
     // these function return the fifo-index, which is used to access the data in the
     // coresponding fifo
 
-	//int capidx = kmaudio_startCapture((char *)"Line 2 (Virtual Audio Cable)", 44100);
-    //int ucapidx = kmaudio_startCapture((char*)"Mikrofon (USB Advanced Audio Device)", 48000);
-    //int capidx = kmaudio_startCapture((char*)"USB Audio CODEC: - (hw:2,0)", 48000);
-    //int capidx = kmaudio_startCapture((char*)"Mikrofon (1080P Webcam)", 48000);
-    //int upbidx = kmaudio_startPlayback((char*)"Lautsprecher (USB Advanced Audio Device)", 48000);
-    //int pbidx = kmaudio_startPlayback((char*)"Lautsprecher (2- High Definition Audio Device)", 48000);
-    //int pbidx = kmaudio_startPlayback((char*)"USB Audio CODEC: - (hw:2,0)", 48000);
+	int capidx = kmaudio_startCapture((char *)"Line 2 (Virtual Audio Cable)", 48000);
+    int pbidx = kmaudio_startPlayback((char *)"Line 2 (Virtual Audio Cable)", 48000);
 
-    //int capidx = kmaudio_startCapture((char*)"PCM2902 Audio Codec Analog Stereo", 48000);
-    //int pbidx = kmaudio_startPlayback((char*)"PCM2902 Audio Codec Analog Stereo", 48000);
-    int ucapidx = kmaudio_startCapture((char*)"USB Advanced Audio Device Analog Stereo", 48000);
-    int upbidx = kmaudio_startPlayback((char*)"USB Advanced Audio Device Analog Stereo", 48000);
-
-    if (ucapidx != -1 || upbidx != -1)
+    float f[1100];
+    while (1)
     {
+        // make a loop: record from Mic and play to Speaker
 
-        float f[1100]; // 1.1 x need rate to have reserve for resampler
-        while (1)
+        int done = 0;
+        // read samples from the capture fifo
+        int anz = kmaudio_readsamples(capidx, f, 1000, 1.0f, 0);
+        if (anz > 0)
         {
-            // make a loop: record from Mic and play to Speaker
-
-            int done = 0;
-            // read samples from the capture fifo
-            /*int anz = kmaudio_readsamples(capidx, f, 1000, 0);
-            if (anz > 0)
-            {
-                // if samples are available, send them to playback fifo
-                //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
-                kmaudio_playsamples(pbidx, f, anz);
-                done = 1;
-            }*/
-            int uanz = kmaudio_readsamples(ucapidx, f, 1000, 0);
-            if (uanz > 0)
-            {
-                // if samples are available, send them to playback fifo
-                //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
-                kmaudio_playsamples(upbidx, f, uanz);
-                done = 1;
-            }
-            if (done == 0)
-            {
-                // if no samples are available make a short break
-                // this is important to prevent excessive CPU usage
-                sleep_ms(10);
-
-                //kmaudio_getDeviceList();
-                /*int len;
-                uint8_t *devstr = io_getAudioDevicelist(&len);
-                printf("Device String: <%s>\n", (char*)(devstr + 1));*/
-            }
+            // if samples are available, send them to playback fifo
+            //printf("write %d samples from %d to %d\n", anz, capidx, pbidx);
+            kmaudio_playsamples(pbidx, f, anz,1.0f);
+            done = 1;
         }
     }
-    else
-        printf("device not available. Ending program\n");
 
     // free resources. This will never happen in this example
     // but should be done in the final program
@@ -126,4 +94,3 @@ int main()
 	return 0;
 }
 #endif // LIBTEST
-

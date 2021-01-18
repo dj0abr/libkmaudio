@@ -40,8 +40,25 @@ int recordCallback(const void* inputBuffer, void* outputBuffer,
     PaStreamCallbackFlags statusFlags,
     void* userData);
 
+void close_capture_stream(int idx)
+{
+	if (devlist[idx].capStream != NULL)
+	{
+		Pa_CloseStream(devlist[idx].capStream);
+		devlist[idx].capStream = NULL;
+	}
+}
+
 int kmaudio_startCapture(char* devname, int samprate)
 {
+	printf("Start request for CAP stream:%s\n", devname);
+
+	if (devname == NULL || strlen(devname) < 3)  // no devices defined yet
+	{
+		printf("no capture devices specified\n");
+		return -1;
+	}
+
 	int idx = searchDevice(devname, 0);
 	if (idx == -1)
 	{
@@ -51,11 +68,11 @@ int kmaudio_startCapture(char* devname, int samprate)
 
 	devlist[idx].working = 0;
 
-	if (devlist[idx].capStream != NULL)
-	{
-		Pa_CloseStream(devlist[idx].capStream);
-		devlist[idx].capStream = NULL;
-	}
+	close_capture_stream(idx);
+
+	printf("Starting CAP stream:%s [%d]\n", devname, idx);
+
+	io_fifo_clear(idx);
 
 	devlist[idx].requested_samprate = samprate;
 	if(getRealSamprate(idx) == -1)
@@ -67,8 +84,18 @@ int kmaudio_startCapture(char* devname, int samprate)
 	if (devlist[idx].requested_samprate != devlist[idx].real_samprate)
 		resampler_create(idx);
 
-	int e = Pa_IsFormatSupported(&devlist[idx].inputParameters, NULL, (double)samprate);
-	printf("err:%d device:%d PAdev:%d samprate: %f\n", e,idx, devlist[idx].devnum,(double)samprate);
+	struct PaWasapiStreamInfo wasapiInfo;
+	memset(&wasapiInfo, 0, sizeof(PaWasapiStreamInfo));
+	wasapiInfo.size = sizeof(PaWasapiStreamInfo);
+	wasapiInfo.hostApiType = paWASAPI;
+	wasapiInfo.version = 1;
+	wasapiInfo.flags = (paWinWasapiExclusive | paWinWasapiThreadPriority);
+	wasapiInfo.threadPriority = eThreadPriorityProAudio;
+	
+	devlist[idx].inputParameters.hostApiSpecificStreamInfo = (&wasapiInfo);
+
+	int e = Pa_IsFormatSupported(&devlist[idx].inputParameters, NULL, (double)devlist[idx].real_samprate);
+	printf("err:%d device:%d PAdev:%d samprate: %f\n", e,idx, devlist[idx].devnum,(double)devlist[idx].real_samprate);
 
 	devlist[idx].index = idx;
 
@@ -76,7 +103,7 @@ int kmaudio_startCapture(char* devname, int samprate)
 		&devlist[idx].capStream,
 		&devlist[idx].inputParameters,
 		NULL,                  
-		(double)samprate,
+		(double)devlist[idx].real_samprate,
 		FRAMES_PER_BUFFER,
 		paClipOff,      
 		recordCallback,
@@ -107,15 +134,16 @@ int recordCallback( const void*                     inputBuffer,
                     PaStreamCallbackFlags           statusFlags,
                     void*                           userData)
 {
-    const float* rptr = (const float*)inputBuffer;
+    const int16_t* rptr = (const int16_t*)inputBuffer;
     int devidx = *((int *)userData);
 	int chans = devlist[devidx].inputParameters.channelCount;
 
 	//printf("%ld captured %d frames. Flag: %X\n", (long)rptr,framesPerBuffer, statusFlags);
 	//measure_speed_bps(framesPerBuffer);
 
+	//printf("%d %d\n", chans, rptr[0]);
 	for (unsigned int i = 0; i < framesPerBuffer; i++)
-		io_write_fifo(devidx, rptr[i * chans]);
+		io_write_fifo_short(devidx, rptr[i * chans]);
 
     // Prevent unused variable warnings
     (void)outputBuffer; 

@@ -34,7 +34,7 @@
 
 void kmaudio_close();
 
-int keeprunning = 1;    // to stop callbacks at program end
+//int keeprunning = 1;    // to stop callbacks at program end
 
 int kmaudio_init()
 {
@@ -44,7 +44,8 @@ int kmaudio_init()
 	printf("libkmaudio_init\n");
 
     keeprunning = 1;
-    init_pipes();   // init fifo
+    init_pipes();       // init fifo
+    init_maxarray();    // init array for maxlevel measurement
 
 #ifdef WIN32
     int err = Pa_Initialize();
@@ -166,4 +167,3 @@ void sleep_ms(int ms)
     usleep(ms * 1000);
 #endif
 }
-

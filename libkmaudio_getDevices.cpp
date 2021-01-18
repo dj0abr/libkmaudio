@@ -44,6 +44,8 @@ int devanz = 0;
 // the list is filled by a call to kmaudio_getDeviceList()
 DEVLIST devlist[MAXDEVICES];
 
+double latency = 0.2;   // WASAPI latency in seconds
+
 #ifdef WIN32
 
 /*static double standardSampleRates[] = {
@@ -101,14 +103,14 @@ int kmaudio_getDeviceList()
 
             devlist[didx].inputParameters.device = i;
             devlist[didx].inputParameters.channelCount = deviceInfo->maxInputChannels;
-            devlist[didx].inputParameters.sampleFormat = paFloat32;
-            devlist[didx].inputParameters.suggestedLatency = 0;
+            devlist[didx].inputParameters.sampleFormat = paInt16;
+            devlist[didx].inputParameters.suggestedLatency = latency;
             devlist[didx].inputParameters.hostApiSpecificStreamInfo = NULL;
 
             devlist[didx].outputParameters.device = i;
             devlist[didx].outputParameters.channelCount = deviceInfo->maxOutputChannels;
-            devlist[didx].outputParameters.sampleFormat = paFloat32;
-            devlist[didx].outputParameters.suggestedLatency = 0;
+            devlist[didx].outputParameters.sampleFormat = paInt16;
+            devlist[didx].outputParameters.suggestedLatency = latency;
             devlist[didx].outputParameters.hostApiSpecificStreamInfo = NULL;
 
             if (devlist[didx].inputParameters.channelCount > 0 && devlist[devanz].outputParameters.channelCount > 0)
@@ -233,15 +235,17 @@ int getRealSamprate(int idx)
 // build string of audio device name, to be sent to application as response to Broadcast search
 // starting with PB devices, sperarator ^, capture devices
 // separator between devices: ~
-// the first character is 0 or 1 and does not belong to the device name
-// it shows if this device was sucessfully started and is currently running (="1")
 #define MAXDEVSTRLEN (MAXDEVICES * (MAXDEVNAMELENGTH + 2) + 10)
 uint8_t io_devstring[MAXDEVSTRLEN];
 
 void io_buildAudioDevString()
 {
     memset(io_devstring, 0, sizeof(io_devstring));
-    io_devstring[0] = ' ';     // placeholder for ID for this UDP message
+    io_devstring[0] = ' ';     // placeholder for other data
+    io_devstring[1] = ' ';     
+    io_devstring[2] = ' ';
+    io_devstring[3] = ' ';
+    io_devstring[4] = ' ';
 
     // playback devices
     for (int i = 0; i < devanz; i++)
@@ -254,7 +258,6 @@ void io_buildAudioDevString()
         }
         if (devlist[i].in_out == 1)
         {
-            strcat((char*)io_devstring, devlist[i].working?"1":"0");
             strcat((char*)io_devstring, devlist[i].name);
             strcat((char*)io_devstring, "~");    // audio device separator
         }
@@ -273,15 +276,12 @@ void io_buildAudioDevString()
         }
         if (devlist[i].in_out == 0)
         {
-            strcat((char*)io_devstring, devlist[i].working ? "1" : "0");
             strcat((char*)io_devstring, devlist[i].name);
             strcat((char*)io_devstring, "~");    // audio device separator
         }
     }
 
     //printf("<%s>\n", (char *)io_devstring);
-
-    io_devstring[0] = 3;   // ID for this message
 }
 
 uint8_t* io_getAudioDevicelist(int* len)

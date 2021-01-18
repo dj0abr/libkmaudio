@@ -49,11 +49,11 @@ pthread_mutex_t crit_sec[NUM_OF_PIPES];
 #define UNLOCK(pn)	pthread_mutex_unlock(&(crit_sec[pn]))
 #endif
 
-#define AUDIO_FIFOFLEN 48000
+#define AUDIO_FIFOFLEN 480000 // 10s at 48k samprate (minimum is number of preambles)
 
 int io_wridx[NUM_OF_PIPES];
 int io_rdidx[NUM_OF_PIPES];
-float io_buffer[NUM_OF_PIPES][AUDIO_FIFOFLEN];
+int16_t io_buffer[NUM_OF_PIPES][AUDIO_FIFOFLEN];
 
 void init_pipes()
 {
@@ -82,21 +82,44 @@ void init_pipes()
 // ignore data if the fifo is full
 void io_write_fifo(int pipenum, float sample)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return;
+
     LOCK(pipenum);
     if (((io_wridx[pipenum] + 1) % AUDIO_FIFOFLEN) == io_rdidx[pipenum])
     {
-        //printf("cap fifo full\n");
+        //printf("cannot float WRITE fifo %d full\n",pipenum);
         UNLOCK(pipenum);
         return;
     }
+
+    io_buffer[pipenum][io_wridx[pipenum]] = (int16_t)(sample * 32768.0f);
+    if (++io_wridx[pipenum] >= AUDIO_FIFOFLEN) io_wridx[pipenum] = 0;
     
+    UNLOCK(pipenum);
+}
+
+void io_write_fifo_short(int pipenum, int16_t sample)
+{
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return;
+
+    LOCK(pipenum);
+    if (((io_wridx[pipenum] + 1) % AUDIO_FIFOFLEN) == io_rdidx[pipenum])
+    {
+        //printf("cannot short WRITE fifo %d full\n", pipenum);
+        UNLOCK(pipenum);
+        return;
+    }
+
     io_buffer[pipenum][io_wridx[pipenum]] = sample;
     if (++io_wridx[pipenum] >= AUDIO_FIFOFLEN) io_wridx[pipenum] = 0;
+
     UNLOCK(pipenum);
 }
 
 int io_read_fifo(int pipenum, float* data)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return 0;
+
     LOCK(pipenum);
 
     if (io_rdidx[pipenum] == io_wridx[pipenum])
@@ -106,9 +129,11 @@ int io_read_fifo(int pipenum, float* data)
         return 0;
     }
 
-    *data = io_buffer[pipenum][io_rdidx[pipenum]];
+    int16_t id = io_buffer[pipenum][io_rdidx[pipenum]];
     if (++io_rdidx[pipenum] >= AUDIO_FIFOFLEN) io_rdidx[pipenum] = 0;
     UNLOCK(pipenum);
+
+    *data = (float)id / 32768;
 
     return 1;
 }
@@ -117,19 +142,54 @@ int io_read_fifo(int pipenum, float* data)
 // if num elems not avail, return all what fifo has stored
 int io_read_fifo_num(int pipenum, float* data, int num)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return 0;
+
     LOCK(pipenum);
 
     int elemInFifo = (io_wridx[pipenum] + AUDIO_FIFOFLEN - io_rdidx[pipenum]) % AUDIO_FIFOFLEN;
+    elemInFifo -= 1;
 
-    if (num > elemInFifo)
+    /*if (num > elemInFifo)
     {
         // Fifo not enough data available
         //printf("only %d elements available\n", elemInFifo);
         UNLOCK(pipenum);
         return 0;
-    }
+    }*/
 
-    //if (num > elemInFifo) num = elemInFifo;
+    if (num > elemInFifo) num = elemInFifo;
+
+    int16_t id;
+
+    for (int i = 0; i < num; i++)
+    {
+        id = io_buffer[pipenum][io_rdidx[pipenum]];
+        *data++ = (float)id / 32768;
+        if (++io_rdidx[pipenum] >= AUDIO_FIFOFLEN) io_rdidx[pipenum] = 0;
+    }
+    UNLOCK(pipenum);
+
+    return num;
+}
+
+int io_read_fifo_num_short(int pipenum, int16_t* data, int num)
+{
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return 0;
+
+    LOCK(pipenum);
+
+    int elemInFifo = (io_wridx[pipenum] + AUDIO_FIFOFLEN - io_rdidx[pipenum]) % AUDIO_FIFOFLEN;
+    elemInFifo -= 1;
+
+    /*if (num > elemInFifo)
+    {
+        // Fifo not enough data available
+        //printf("only %d elements available\n", elemInFifo);
+        UNLOCK(pipenum);
+        return 0;
+    }*/
+
+    if (num > elemInFifo) num = elemInFifo;
 
     for (int i = 0; i < num; i++)
     {
@@ -143,17 +203,21 @@ int io_read_fifo_num(int pipenum, float* data, int num)
 
 void io_fifo_clear(int pipenum)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return;
+
     io_wridx[pipenum] = io_rdidx[pipenum] = 0;
 }
 
 int io_fifo_freespace(int pipenum)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return 0;
+
     int freebuf = 0;
 
     LOCK(pipenum);
 
     int elemInFifo = (io_wridx[pipenum] + AUDIO_FIFOFLEN - io_rdidx[pipenum]) % AUDIO_FIFOFLEN;
-    freebuf = AUDIO_FIFOFLEN - elemInFifo;
+    freebuf = AUDIO_FIFOFLEN - elemInFifo -1;
 
     UNLOCK(pipenum);
     return freebuf;
@@ -161,11 +225,28 @@ int io_fifo_freespace(int pipenum)
 
 int io_fifo_elems_avail(int pipenum)
 {
+    if (pipenum < 0 || pipenum >= NUM_OF_PIPES) return 0;
+
     int elems = 0;
 
     LOCK(pipenum);
     elems = (io_wridx[pipenum] + AUDIO_FIFOFLEN - io_rdidx[pipenum]) % AUDIO_FIFOFLEN;
     UNLOCK(pipenum);
 
+    elems -= 10;
     return elems;
 }
+
+int io_fifo_usedspace(int pipenum)
+{
+    return AUDIO_FIFOFLEN - io_fifo_freespace(pipenum);
+}
+
+int io_fifo_usedpercent(int pipenum)
+{
+    int used = AUDIO_FIFOFLEN - io_fifo_freespace(pipenum);
+    int percent = (used * 100) / AUDIO_FIFOFLEN;
+    //printf("idx:%d used:%d size:%d percent:%d\n", pipenum, used, AUDIO_FIFOFLEN, percent);
+    return percent;
+}
+
