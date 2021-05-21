@@ -94,7 +94,7 @@ int kmaudio_playsamples(int id, float* psamp, int len, float volume)
 	for (int i = 0; i < newlen; i++)
 	{
 		io_write_fifo(id, f[i] * volume);
-		getMax(id, psamp[i] * volume);
+		getMax(id, f[i] * volume);
 	}
 
 	return 0;
